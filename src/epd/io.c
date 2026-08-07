@@ -56,6 +56,14 @@ esp_err_t epd_io_init(void)
     return ESP_OK;
 }
 
+void epd_io_reset(uint32_t low_ms, uint32_t high_ms)
+{
+    gpio_set_level(EPD_PIN_RST, 0);
+    epd_delay_ms(low_ms);
+    gpio_set_level(EPD_PIN_RST, 1);
+    epd_delay_ms(high_ms);
+}
+
 static inline void epd_spi_write_byte(uint8_t tx)
 {
     gpio_set_level(EPD_PIN_CLK, 0);
@@ -135,52 +143,4 @@ void epd_write_data_cs(uint8_t data, uint8_t cs_num)
     gpio_set_level(EPD_PIN_DC, 1);
     epd_spi_write_byte(data);
     epd_cs_all_high();
-}
-
-esp_err_t epd_power_on(void)
-{
-    ESP_LOGI(TAG, "power on (BUSY before=%d)", gpio_get_level(EPD_PIN_BUSY));
-    epd_write_command(0x04);
-    ESP_LOGI(TAG, "power on command sent (BUSY=%d)", gpio_get_level(EPD_PIN_BUSY));
-    /* QYEG1085BNF86BF0 reference: allow the power rails to start before BUSY. */
-    epd_delay_ms(200);
-    ESP_LOGI(TAG, "power on after 200ms (BUSY=%d)", gpio_get_level(EPD_PIN_BUSY));
-    return epd_wait_busy();
-}
-
-esp_err_t epd_power_off_deep_sleep(void)
-{
-    ESP_LOGI(TAG, "power off + deep sleep");
-    epd_write_command(0x02);
-    epd_delay_ms(60);
-    esp_err_t err = epd_wait_busy();
-    if (err != ESP_OK) {
-        return err;
-    }
-
-    epd_write_command(0x07);
-    epd_write_data(0xA5);
-    epd_delay_ms(60);
-    return ESP_OK;
-}
-
-esp_err_t epd_update_and_sleep(void)
-{
-    esp_err_t err = epd_power_on();
-    if (err != ESP_OK) {
-        return err;
-    }
-
-    ESP_LOGI(TAG, "refresh display");
-    epd_write_command(0x12);
-    err = epd_wait_busy();
-    if (err != ESP_OK) {
-        return err;
-    }
-
-    err = epd_power_off_deep_sleep();
-    if (err == ESP_OK) {
-        ESP_LOGI(TAG, "update complete");
-    }
-    return err;
 }

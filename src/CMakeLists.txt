@@ -12,6 +12,10 @@ set(app_sources
     net/wifi_manager.c
     epd/io.c
     epd/panel.c
+    epd/layout/dual_lr.c
+    epd/layout/single.c
+    epd/ctrl/uc8579.c
+    epd/ctrl/jd79686.c
     epd/drivers/qyeg1085ryu579.c
     epd/drivers/qyeg1085bnf86bf0.c
 )

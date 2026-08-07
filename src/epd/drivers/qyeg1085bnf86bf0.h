@@ -7,16 +7,15 @@ extern "C" {
 #endif
 
 /*
- * QYEG1085BNF86BF0 / EPD_W21 (FITI) ×2 — 1360×480, monochrome (B/W)
+ * QYEG1085BNF86BF0 / JD79686AB (FITI) ×2 — 1360×480, monochrome (B/W)
  *
- * One glass, two controllers on a shared SPI (separate CS):
+ * Product panel (L3): binds jd79686 (L1) + dual_lr row-interleaved 1bpp (L2).
  *
  *   CS (Master)  drives physical columns   0 .. 679   local origin (0,0)
  *   CS2 (Slave)  drives physical columns 680 .. 1359  local origin (0,0) = phys 680
  *
- * Y is identical on both ICs (0 .. 479). Full-frame bytes are packed per row as
- * [Master 85 bytes | Slave 85 bytes] = 170 bytes/row. Partial 0x90 windows use
- * each IC's local X (Slave: local_x = screen_x - 680); do not mirror Slave X.
+ * Partial refresh: supported (display_partial set when not EPD_MASTER_ONLY_TEST).
+ * Region encoding: epd-bw-msb-v1 [old][new]; width multiple of 8; cross-seam OK.
  */
 
 #define EPD_BNF_WIDTH           1360

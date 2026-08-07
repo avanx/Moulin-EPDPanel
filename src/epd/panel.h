@@ -10,16 +10,35 @@ extern "C" {
 #endif
 
 /*
- * Unified panel interface.
+ * Unified panel interface (L3 Product).
+ *
+ * Driver stack (progressive framework):
+ *
+ *   L3 Product  — this header / epd/panel.c registry / epd/drivers
+ *                 epd_panel_ops_t caps + ops; upper layers only see this.
+ *   L2 Layout   — epd/layout (dual_lr, single)
+ *                 logical full-screen <-> IC-local geometry & frame packing.
+ *   L1 Ctrl     — epd/ctrl (uc8579, jd79686)
+ *                 controller-family init / RAM load / refresh / sleep.
+ *   L0 Bus      — epd/io
+ *                 bit-bang SPI, CS routing, BUSY, reset (no refresh opcodes).
  *
  * Each compiled-in panel driver defines one `epd_panel_ops_t` instance
  * carrying its capabilities (for manifest validation) and its operations
  * (for the upper layers). Panels are registered in epd/panel.c; which
- * panels get compiled is chosen in menuconfig (EPD Panel Drivers).
+ * panels get compiled is chosen via platformio.ini build_flags.
  *
- * `caps` fields let display_client validate an incoming manifest against
- * the active panel without any hard-coded dimensions/encoding, so panels
- * with different resolution, color depth or encoding are all supported.
+ * Partial-refresh capability matrix (callers use display_partial != NULL):
+ *
+ *   Panel                  Layout              Partial  Region notes
+ *   ---------------------  ------------------  -------  ----------------------------
+ *   qyeg1085_color         dual-left-right     no       full refresh only
+ *   qyeg1085_mono          dual-left-right     yes*     epd-bw-msb-v1; width multiple of 8;
+ *                                                       cross-seam regions split
+ *                                                       (*disabled if EPD_MASTER_ONLY_TEST)
+ *
+ * Cross-IC partial: layout/dual_lr splits at panel_w; idle no-op on the
+ * unused IC so Master BUSY still tracks a broadcast 0x12.
  */
 
 /*

@@ -9,13 +9,11 @@ extern "C" {
 #endif
 
 /*
- * Shared EPD IO layer.
+ * L0 Bus — shared EPD IO (bit-banged SPI + pins).
  *
- * Bit-banged SPI, busy-wait, command/data writes and the common
- * power-on / refresh / power-off + deep-sleep sequence. Panels with
- * identical timing (QYEG1085RYU579 color and QYEG1085BNF86BF0 mono, both
- * dual-panel) share this layer; a future panel with different timing
- * may implement its own IO instead of using these helpers.
+ * Provides only transport: GPIO setup, reset pulse, busy-wait, and
+ * command/data writes (broadcast or per-CS). Controller refresh opcodes
+ * (power-on / refresh / deep-sleep) live inside each epd/ctrl family (L1).
  *
  * Default pin map for ESP32-S3-DevKitM-1 (avoid USB 19/20, strapping 0/3/45/46).
  *
@@ -27,6 +25,7 @@ extern "C" {
  *   CLK  -> GPIO9
  *   MOSI -> GPIO10
  */
+
 #ifndef EPD_PIN_BUSY
 #define EPD_PIN_BUSY  4
 #endif
@@ -65,17 +64,13 @@ esp_err_t epd_io_init(void);
 void epd_delay_ms(uint32_t ms);
 esp_err_t epd_wait_busy(void);
 
+/* Pulse RST low then high. */
+void epd_io_reset(uint32_t low_ms, uint32_t high_ms);
+
 void epd_write_command(uint8_t cmd);
 void epd_write_data(uint8_t data);
 void epd_write_command_cs(uint8_t cmd, uint8_t cs_num);
 void epd_write_data_cs(uint8_t data, uint8_t cs_num);
-
-/* Common power-on -> refresh -> power-off + deep-sleep sequence. */
-esp_err_t epd_update_and_sleep(void);
-
-/* Building blocks shared by full and partial refresh sequences. */
-esp_err_t epd_power_on(void);              /* 0x04 + wait BUSY */
-esp_err_t epd_power_off_deep_sleep(void);  /* 0x02 + wait BUSY + 0x07 0xA5 */
 
 #ifdef __cplusplus
 }

@@ -11,17 +11,31 @@
 - 统一面板接口 `epd_panel_ops_t`，驱动按宏裁剪编译
 - 彩色全刷、单色全刷 / 局刷（视驱动能力）
 
-## 路线图（TODO）
+## 驱动分层
 
-当前驱动仍与具体型号、双面板布局耦合较深。后续重点是**抽象更多 EPD 驱动**，以覆盖不同分辨率、主控芯片与面板拓扑。
+固件按 Bus / Controller / Layout / Product 四层组织，上层只依赖 `epd_panel_ops_t`：
 
-### 驱动抽象与多屏支持
+| 层 | 目录 | 职责 |
+|---|---|---|
+| L0 Bus | `epd/io.*` | SPI bitbang、引脚、BUSY、复位（不含刷新命令） |
+| L1 Ctrl | `epd/ctrl/*` | 主控族 init / 写 RAM / 刷新 / 深睡（各族自带刷新序列） |
+| L2 Layout | `epd/layout/*` | 拓扑几何：`dual_lr`（左右拼）、`single`（单屏，待用） |
+| L3 Product | `epd/drivers/*` + `panel.*` | 型号 cfg + `epd_panel_ops_t` 注册 |
 
-- [ ] 进一步抽象 EPD 驱动层：将初始化序列、LUT、像素打包、面板拓扑（单屏 / 左右拼 / 上下拼）从型号实现中剥离
-- [ ] 支持更多主控芯片（如 SSD16xx、UC81xx 其他型号、IL0xxx 等常见 EPD controller）
-- [ ] 支持更多分辨率与单面板布局（非 1360×480 双拼）
-- [ ] 按主控族复用通用传输与刷新管线，型号仅保留 LUT / 时序差异
-- [ ] 完善局刷能力矩阵（哪些屏支持、region 坐标映射规则）
+### 局刷能力矩阵
+
+| 屏 | 布局 | 局刷 | 说明 |
+|---|---|---|---|
+| `qyeg1085_color` | dual-left-right | 否 | `display_partial = NULL`，仅全刷 |
+| `qyeg1085_mono` | dual-left-right | 是 | `epd-bw-msb-v1`；宽为 8 倍数；跨缝由 `dual_lr` 拆分（`EPD_MASTER_ONLY_TEST` 时关闭） |
+
+### 路线图（TODO）
+
+- [x] 抽象 EPD 驱动层：Bus / Ctrl / Layout / Product 分离
+- [x] 局刷能力矩阵与跨 IC region 映射（`dual_lr`）
+- [x] 单面板 layout API（`layout/single`，待首块单屏产品接入）
+- [ ] 支持更多主控芯片（SSD16xx、UC81xx 其他型号、IL0xxx 等）
+- [ ] 接入其他更多的电子墨水屏幕
 
 ## 已支持屏幕
 
@@ -30,7 +44,7 @@
 | ✅ 已支持 | `QYEG1085RYU579` | UC8579cGAC ×2 | 1360×480 | 黑/白/红/黄（4 色, 2 bpp） | 左右双面板 | `CONFIG_EPD_PANEL_QYEG1085_COLOR` |
 | ✅ 已支持 | `QYEG1085BNF86BF0` | JD79686AB ×2 | 1360×480 | 黑/白（1 bpp） | 左右双面板 | `CONFIG_EPD_PANEL_QYEG1085_MONO` |
 
-> 当前两款屏共用 `epd_io` 时序与引脚约定，均为「左右双面板拼接、合计 1360×480」。更多分辨率 / 主控需通过抽象驱动层扩展。
+> 当前两款屏共用 L0 `epd_io` 与 L2 `dual_lr`，均为「左右双面板拼接、合计 1360×480」。新主控加 `ctrl/*`；新拓扑加 `layout/*`；产品文件保持薄粘合。
 
 ## 硬件
 
@@ -134,11 +148,17 @@ src/                         固件源码
     provisioning_server.{c,h} 网页配置服务
     display_client.{c,h}     服务端拉取 / 校验 / 刷新
   epd/
-    io.{c,h}                 共享 IO 层（SPI bitbang / busy / 刷新序列）
-    panel.{c,h}              统一面板接口与注册表
+    io.{c,h}                 L0 总线（SPI bitbang / busy / reset）
+    panel.{c,h}              L3 统一面板接口与注册表
+    layout/
+      dual_lr.{c,h}          L2 左右双拼几何与帧切分
+      single.{c,h}           L2 单面板几何（待产品接入）
+    ctrl/
+      uc8579.{c,h}           L1 彩色主控族（含刷新序列）
+      jd79686.{c,h}          L1 单色主控族（含局刷与刷新序列）
     drivers/
-      qyeg1085ryu579.{c,h}   彩色屏 QYEG1085RYU579（CONFIG_EPD_PANEL_QYEG1085_COLOR）
-      qyeg1085bnf86bf0.{c,h} 单色屏 QYEG1085BNF86BF0（CONFIG_EPD_PANEL_QYEG1085_MONO）
+      qyeg1085ryu579.{c,h}   L3 彩色产品（CONFIG_EPD_PANEL_QYEG1085_COLOR）
+      qyeg1085bnf86bf0.{c,h} L3 单色产品（CONFIG_EPD_PANEL_QYEG1085_MONO）
 partitions.csv               分区表
 platformio.ini               PlatformIO 构建配置
 sdkconfig.defaults           ESP-IDF 默认配置
@@ -147,14 +167,18 @@ LICENSE                      MIT 许可证
 
 ## 添加一块新屏
 
-1. 新建 `src/epd/drivers/<name>.{c,h}`：实现 `init` / `display_image` / `fill_white`，定义 `epd_panel_ops_t` 实例（填自己的分辨率 / 序列 / `color_mode` / `encoding` / `panel_layout`）。IO 时序相同时复用 `epd/io.h`，不同则自带。`.c` 文件用 `#if defined(CONFIG_EPD_PANEL_<NAME>) && CONFIG_EPD_PANEL_<NAME>` 守卫。
-2. `src/epd/panel.c` 的 `s_registry` 增加 `#if` 条件项（参照现有 color / mono）。
-3. `src/CMakeLists.txt` 的 `app_sources` 增加 `epd/drivers/<name>.c`。
-4. `platformio.ini` 的 `build_flags` 增加 `-DCONFIG_EPD_PANEL_<NAME>=1`，然后 `pio run`。
+按差异选择落点（能复用则不复制）：
+
+1. **拓扑**：已有 `dual_lr` / `single` 则复用；否则新建 `epd/layout/<name>.{c,h}` 并加入 `CMakeLists.txt`。
+2. **主控族**：已有 `uc8579` / `jd79686` 则复用；否则新建 `epd/ctrl/<family>.{c,h}`，刷新序列写在该族内部。
+3. **产品**：新建 `src/epd/drivers/<name>.{c,h}`，填 cfg + `epd_panel_ops_t`（分辨率 / `color_mode` / `encoding` / `panel_layout`），`.c` 用 `#if defined(CONFIG_EPD_PANEL_<NAME>) && CONFIG_EPD_PANEL_<NAME>` 守卫。
+4. `src/epd/panel.c` 的 `s_registry` 增加 `#if` 条件项。
+5. `src/CMakeLists.txt` 的 `app_sources` 增加新产品（及新建的 layout/ctrl）源文件。
+6. `platformio.ini` 的 `build_flags` 增加 `-DCONFIG_EPD_PANEL_<NAME>=1`，然后 `pio run`。
 
 ### 欢迎贡献
 
-若你手上有其他型号的电子墨水屏资料或可验证硬件，欢迎 PR：优先贡献独立驱动文件 + 注册表条目 + README「已支持屏幕」表更新。
+若你手上有其他型号的电子墨水屏资料或可验证硬件，欢迎 PR：优先贡献 layout/ctrl（若需要）+ 薄产品驱动 + 注册表条目 + README「已支持屏幕」表更新。
 
 ## 许可证
 

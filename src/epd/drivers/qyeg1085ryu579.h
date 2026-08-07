@@ -6,7 +6,11 @@
 extern "C" {
 #endif
 
-/* QYEG1085RYU579 / UC8579cGAC x2 — 1360x480, 4-color (B/W/Y/R) */
+/* QYEG1085RYU579 / UC8579cGAC x2 — 1360x480, 4-color (B/W/Y/R)
+ *
+ * Product panel (L3): binds uc8579 (L1) + dual_lr contiguous 2bpp (L2).
+ * Partial refresh: not supported (display_partial = NULL).
+ */
 
 #define EPD_COLOR_BLACK   0x00
 #define EPD_COLOR_WHITE   0x01
