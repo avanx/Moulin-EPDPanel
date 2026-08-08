@@ -76,23 +76,28 @@ static inline void epd_spi_write_byte(uint8_t tx)
     }
 }
 
-esp_err_t epd_wait_busy(void)
+esp_err_t epd_wait_busy_idle(int idle_level)
 {
-    /* BUSY low = busy, high = idle */
     int waited_ms = 0;
-    while (gpio_get_level(EPD_PIN_BUSY) == 0) {
+    while (gpio_get_level(EPD_PIN_BUSY) != idle_level) {
         vTaskDelay(pdMS_TO_TICKS(10));
         waited_ms += 10;
         if (waited_ms > 0 && (waited_ms % 1000) == 0) {
-            ESP_LOGW(TAG, "waiting BUSY... %d ms", waited_ms);
+            ESP_LOGW(TAG, "waiting BUSY (idle=%d)... %d ms", idle_level, waited_ms);
         }
         if (waited_ms >= 60000) {
-            ESP_LOGE(TAG, "BUSY timeout after %d ms", waited_ms);
+            ESP_LOGE(TAG, "BUSY timeout after %d ms (idle=%d)", waited_ms, idle_level);
             return ESP_ERR_TIMEOUT;
         }
     }
-    ESP_LOGI(TAG, "BUSY released after %d ms", waited_ms);
+    ESP_LOGI(TAG, "BUSY released after %d ms (idle=%d)", waited_ms, idle_level);
     return ESP_OK;
+}
+
+esp_err_t epd_wait_busy(void)
+{
+    /* UC8579 / JD79686: BUSY low = busy, high = idle */
+    return epd_wait_busy_idle(1);
 }
 
 void epd_write_command(uint8_t cmd)

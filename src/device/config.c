@@ -166,6 +166,27 @@ esp_err_t device_config_save_device_settings(const device_config_t *config)
     return err;
 }
 
+esp_err_t device_config_save_panel_type(const char *panel_type)
+{
+    if (panel_type == NULL || panel_type[0] == '\0' ||
+        strlen(panel_type) > DEVICE_PANEL_TYPE_MAX) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    nvs_handle_t handle;
+    ESP_RETURN_ON_ERROR(nvs_open(NAMESPACE, NVS_READWRITE, &handle), TAG, "open NVS");
+    esp_err_t err = set_string(handle, "panel", panel_type);
+    /* Panel change invalidates any cached frame baseline. */
+    if (err == ESP_OK) err = set_string(handle, "snapshot", "");
+    if (err == ESP_OK) err = nvs_set_u32(handle, "refresh", 0);
+    if (err == ESP_OK) err = nvs_commit(handle);
+    nvs_close(handle);
+    if (err == ESP_OK) {
+        EPD_LOGI(TAG, "panel type saved: %s", panel_type);
+    }
+    return err;
+}
+
 esp_err_t device_config_save_manifest_state(const char *snapshot_id,
                                             uint32_t refresh_after_seconds)
 {

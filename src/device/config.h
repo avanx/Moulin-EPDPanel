@@ -29,6 +29,8 @@ esp_err_t device_config_load(device_config_t *config);
 esp_err_t device_config_save(const device_config_t *config);
 esp_err_t device_config_save_wifi(const device_config_t *config);
 esp_err_t device_config_save_device_settings(const device_config_t *config);
+/* Persist panel type only (no server fields). Clears cached snapshot. */
+esp_err_t device_config_save_panel_type(const char *panel_type);
 esp_err_t device_config_save_manifest_state(const char *snapshot_id,
                                             uint32_t refresh_after_seconds);
 esp_err_t device_config_clear_snapshot(void);

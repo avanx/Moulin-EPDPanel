@@ -95,25 +95,40 @@ static const char STATION_HTML[] =
 ".card{max-width:620px;margin:28px auto;background:#fff;padding:26px;border-radius:16px;box-shadow:0 8px 30px #0002}"
 "h1{margin:0 0 6px}p{color:#62707d}label{display:block;margin:15px 0 5px;font-weight:600}"
 "input,select,button{width:100%;padding:11px;border:1px solid #ccd4da;border-radius:8px;font:inherit}"
-"button{margin-top:18px;background:#18212a;color:#fff;border:0;cursor:pointer}"
+"button{margin-top:12px;background:#18212a;color:#fff;border:0;cursor:pointer}"
 ".danger{background:#b42318}.secondary{background:#59636e}"
+"h2{margin:22px 0 0;font-size:16px}.hint{margin:6px 0 0;font-size:13px;color:#62707d}"
 "#msg{min-height:24px;margin-top:14px}.ok{color:#18794e}.err{color:#c62828}"
 "</style></head><body><main class=card><h1>屏幕参数</h1><p id=status>正在读取设备状态…</p><form id=form>"
-"<label>服务器地址</label><input id=server_url type=url maxlength=192 placeholder='https://epd.example.com' required>"
-"<label>Screen ID</label><input id=screen_id maxlength=36 placeholder='UUID' required>"
-"<label>API Key</label><input id=api_key type=password maxlength=128 placeholder='留空则保留原 Key'>"
+"<h2>屏幕类型</h2><p class=hint>可单独保存，无需服务端参数；用于刷白等本地测试。</p>"
 "<label>屏幕类型</label><select id=panel_type></select>"
-"<button type=submit>保存参数</button><button type=button id=refresh>强制全屏刷新</button>"
+"<button type=button id=save_panel>保存屏幕类型</button>"
+"<h2>服务端拉取</h2><p class=hint>仅在需要从服务器拉画面时填写。</p>"
+"<label>服务器地址</label><input id=server_url type=url maxlength=192 placeholder='https://epd.example.com'>"
+"<label>Screen ID</label><input id=screen_id maxlength=36 placeholder='UUID'>"
+"<label>API Key</label><input id=api_key type=password maxlength=128 placeholder='留空则保留原 Key'>"
+"<button type=submit>保存服务参数</button>"
+"<h2>操作</h2>"
+"<button type=button id=refresh>强制全屏刷新</button>"
 "<button type=button id=white class=danger>刷白并暂停更新</button>"
 "<button type=button id=restart class=secondary>重启设备</button><div id=msg></div></form></main><script>"
 "const q=s=>document.querySelector(s),msg=(t,e=false)=>{q('#msg').textContent=t;q('#msg').className=e?'err':'ok'};"
+"let hasApiKey=false;"
 "async function load(){try{let c=await(await fetch('/api/device')).json();q('#server_url').value=c.server_url||'';"
-"q('#screen_id').value=c.screen_id||'';"
+"q('#screen_id').value=c.screen_id||'';hasApiKey=!!c.has_api_key;"
 "if(c.available_panels){let ps=q('#panel_type');ps.innerHTML='';c.available_panels.forEach(p=>{let o=document.createElement('option');o.value=p.type;o.textContent=p.label;ps.append(o)});ps.value=c.panel_type||''}"
 "let s=await(await fetch('/api/status')).json();q('#status').textContent=`Station IP：${s.ip}；WiFi：${s.connected?'已连接':'未连接'}`}"
 "catch(e){msg('读取设备参数失败',true)}}"
-"q('#form').onsubmit=async e=>{e.preventDefault();msg('正在保存…');let body={server_url:q('#server_url').value.trim(),"
-"screen_id:q('#screen_id').value.trim(),api_key:q('#api_key').value.trim(),panel_type:q('#panel_type').value};"
+"q('#save_panel').onclick=async()=>{msg('正在保存屏幕类型…');"
+"let body={panel_only:true,panel_type:q('#panel_type').value};"
+"try{let r=await fetch('/api/device',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});"
+"let j=await r.json();if(!r.ok)throw Error(j.error||'保存失败');msg('屏幕类型已保存，设备即将重启')}"
+"catch(x){msg(x.message,true)}};"
+"q('#form').onsubmit=async e=>{e.preventDefault();"
+"let server=q('#server_url').value.trim(),sid=q('#screen_id').value.trim(),key=q('#api_key').value.trim();"
+"if(!server||!sid){msg('保存服务参数需填写服务器地址与 Screen ID',true);return}"
+"if(!key&&!hasApiKey){msg('请填写 API Key',true);return}"
+"msg('正在保存…');let body={server_url:server,screen_id:sid,api_key:key,panel_type:q('#panel_type').value};"
 "try{let r=await fetch('/api/device',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});"
 "let j=await r.json();if(!r.ok)throw Error(j.error||'保存失败');msg('保存成功，设备即将重启并开始轮询')}"
 "catch(x){msg(x.message,true)}};"
@@ -446,6 +461,21 @@ static esp_err_t wifi_post_handler(httpd_req_t *request)
     return result;
 }
 
+static bool panel_type_registered(const char *type)
+{
+    if (type == NULL || type[0] == '\0') {
+        return false;
+    }
+    const epd_panel_ops_t *const *panels;
+    size_t count = epd_panel_list(&panels);
+    for (size_t i = 0; i < count; i++) {
+        if (strcmp(type, panels[i]->type) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static esp_err_t device_post_handler(httpd_req_t *request)
 {
     if (wifi_manager_is_provisioning()) {
@@ -455,8 +485,48 @@ static esp_err_t device_post_handler(httpd_req_t *request)
     cJSON *root = receive_json(request);
     device_config_t config;
     esp_err_t load_err = device_config_load(&config);
-    bool valid = load_err == ESP_OK && root != NULL &&
-                 copy_json_string(root, "server_url", config.server_url,
+    bool panel_only = root != NULL &&
+                      cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(root, "panel_only"));
+
+    cJSON *response = cJSON_CreateObject();
+    esp_err_t result;
+
+    if (load_err != ESP_OK || root == NULL) {
+        cJSON_AddStringToObject(response, "error", "参数无效");
+        result = send_json(request, response, 400);
+        cJSON_Delete(response);
+        cJSON_Delete(root);
+        return result;
+    }
+
+    /* Apply panel_type from body when present (both modes). */
+    cJSON *pt = cJSON_GetObjectItemCaseSensitive(root, "panel_type");
+    if (cJSON_IsString(pt) && pt->valuestring != NULL && pt->valuestring[0] != '\0') {
+        snprintf(config.panel_type, sizeof(config.panel_type), "%s", pt->valuestring);
+    }
+
+    if (panel_only) {
+        if (!panel_type_registered(config.panel_type)) {
+            cJSON_AddStringToObject(response, "error", "屏幕类型无效或未编译进固件");
+            result = send_json(request, response, 400);
+        } else {
+            esp_err_t err = device_config_save_panel_type(config.panel_type);
+            if (err != ESP_OK) {
+                EPD_LOGE(TAG, "save panel type failed: %s", esp_err_to_name(err));
+                cJSON_AddStringToObject(response, "error", "屏幕类型保存失败");
+                result = send_json(request, response, 500);
+            } else {
+                cJSON_AddBoolToObject(response, "ok", true);
+                result = send_json(request, response, 200);
+                xTaskCreate(restart_task, "panel_restart", 2048, NULL, 5, NULL);
+            }
+        }
+        cJSON_Delete(response);
+        cJSON_Delete(root);
+        return result;
+    }
+
+    bool valid = copy_json_string(root, "server_url", config.server_url,
                                   sizeof(config.server_url), false) &&
                  copy_json_string(root, "screen_id", config.screen_id,
                                   sizeof(config.screen_id), false);
@@ -468,31 +538,13 @@ static esp_err_t device_post_handler(httpd_req_t *request)
     if (valid && api_key[0] != '\0') {
         snprintf(config.api_key, sizeof(config.api_key), "%s", api_key);
     }
-    /* panel_type is optional: keep current value when absent or empty */
-    if (valid) {
-        cJSON *pt = cJSON_GetObjectItemCaseSensitive(root, "panel_type");
-        if (cJSON_IsString(pt) && pt->valuestring != NULL && pt->valuestring[0] != '\0') {
-            snprintf(config.panel_type, sizeof(config.panel_type), "%s", pt->valuestring);
-        }
-    }
     if (valid && config.panel_type[0] != '\0') {
-        const epd_panel_ops_t *const *panels;
-        size_t count = epd_panel_list(&panels);
-        bool found = false;
-        for (size_t i = 0; i < count; i++) {
-            if (strcmp(config.panel_type, panels[i]->type) == 0) {
-                found = true;
-                break;
-            }
-        }
-        valid = found;
+        valid = panel_type_registered(config.panel_type);
     }
     if (valid) {
         valid = device_config_validate_device_settings(&config);
     }
 
-    cJSON *response = cJSON_CreateObject();
-    esp_err_t result;
     if (!valid) {
         cJSON_AddStringToObject(response, "error", "参数无效或缺少 API Key");
         result = send_json(request, response, 400);

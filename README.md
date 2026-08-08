@@ -19,7 +19,7 @@
 |---|---|---|
 | L0 Bus | `epd/io.*` | SPI bitbang、引脚、BUSY、复位（不含刷新命令） |
 | L1 Ctrl | `epd/ctrl/*` | 主控族 init / 写 RAM / 刷新 / 深睡（各族自带刷新序列） |
-| L2 Layout | `epd/layout/*` | 拓扑几何：`dual_lr`（左右拼）、`single`（单屏，待用） |
+| L2 Layout | `epd/layout/*` | 拓扑几何：`dual_lr`（左右拼）、`single`（单屏） |
 | L3 Product | `epd/drivers/*` + `panel.*` | 型号 cfg + `epd_panel_ops_t` 注册 |
 
 ### 局刷能力矩阵
@@ -28,13 +28,15 @@
 |---|---|---|---|
 | `qyeg1085_color` | dual-left-right | 否 | `display_partial = NULL`，仅全刷 |
 | `qyeg1085_mono` | dual-left-right | 是 | `epd-bw-msb-v1`；宽为 8 倍数；跨缝由 `dual_lr` 拆分（`EPD_MASTER_ONLY_TEST` 时关闭） |
+| `hink_e042a13_a0` | single | 否 | `epd-bwr-plane-v1`；仅全刷 |
 
 ### 路线图（TODO）
 
 - [x] 抽象 EPD 驱动层：Bus / Ctrl / Layout / Product 分离
 - [x] 局刷能力矩阵与跨 IC region 映射（`dual_lr`）
-- [x] 单面板 layout API（`layout/single`，待首块单屏产品接入）
-- [ ] 支持更多主控芯片（SSD16xx、UC81xx 其他型号、IL0xxx 等）
+- [x] 单面板 layout API（`layout/single`，已由 HINK-E042A13-A0 接入）
+- [x] 支持 SSD1619 主控族（`ctrl/ssd1619`）
+- [ ] 支持更多主控芯片（SSD16xx 其他型号、UC81xx、IL0xxx 等）
 - [ ] 接入其他更多的电子墨水屏幕
 
 ## 已支持屏幕
@@ -43,8 +45,9 @@
 |---|---|---|---|---|---|---|
 | ✅ 已支持 | `QYEG1085RYU579` | UC8579cGAC ×2 | 1360×480 | 黑/白/红/黄（4 色, 2 bpp） | 左右双面板 | `CONFIG_EPD_PANEL_QYEG1085_COLOR` |
 | ✅ 已支持 | `QYEG1085BNF86BF0` | JD79686AB ×2 | 1360×480 | 黑/白（1 bpp） | 左右双面板 | `CONFIG_EPD_PANEL_QYEG1085_MONO` |
+| ✅ 已支持 | `HINK-E042A13-A0` | SSD1619 ×1 | 400×300 | 黑/白/红（BWR） | 单面板 | `CONFIG_EPD_PANEL_HINK_E042A13_A0` |
 
-> 当前两款屏共用 L0 `epd_io` 与 L2 `dual_lr`，均为「左右双面板拼接、合计 1360×480」。新主控加 `ctrl/*`；新拓扑加 `layout/*`；产品文件保持薄粘合。
+> 双面板屏共用 L0 `epd_io` 与 L2 `dual_lr`（合计 1360×480）。`HINK-E042A13-A0` 使用 L2 `single` + L1 `ssd1619`（例程见 `reference/GDEH042Z96_Arduino.ino`）。新主控加 `ctrl/*`；新拓扑加 `layout/*`；产品文件保持薄粘合。
 
 ## 硬件
 
@@ -69,8 +72,9 @@
 
 - 彩色 `QYEG1085RYU579`（默认）：`-DCONFIG_EPD_PANEL_QYEG1085_COLOR=1`
 - 单色 `QYEG1085BNF86BF0`：`-DCONFIG_EPD_PANEL_QYEG1085_MONO=1`
+- 黑白红 `HINK-E042A13-A0`：`-DCONFIG_EPD_PANEL_HINK_E042A13_A0=1`
 
-默认配置可同时启用两屏，网页再选当前型号。只保留其一亦可。改完后：
+默认配置可同时启用多屏，网页再选当前型号。只保留其一亦可。改完后：
 
 ```
 pio run -e esp32-s3-devkitm-1
@@ -103,16 +107,16 @@ SSID: EPDPanel-<mac>
 
 设备联网后，用浏览器访问其 Station IP，在「屏幕参数」页配置：
 
-- **服务器地址**、**Screen ID**、**API Key**：由你的服务端提供。
-- **屏幕类型**：下拉框，只列出当前固件**已编译进去**的屏（由 `platformio.ini` 的 `build_flags` 决定）。选择后持久化到 NVS，重启生效；未配置时使用默认屏。
+- **屏幕类型**：可单独保存（不必填服务端参数），用于刷白等本地测试；未配置时使用默认屏。下拉框只列出当前固件已编译的屏。
+- **服务器地址**、**Screen ID**、**API Key**：仅在需要从服务端拉画面时填写；「保存服务参数」时校验。
 
-页面还提供三个操作按钮：
+页面还提供操作按钮：
 
-- **强制全屏刷新**：忽略缓存，立即重新拉取并刷新一帧。
-- **刷白并暂停更新**：清屏为全白并暂停自动更新，直到重启。
+- **强制全屏刷新**：忽略缓存，立即重新拉取并刷新一帧（需已配置服务参数）。
+- **刷白并暂停更新**：清屏为全白并暂停自动更新，直到重启（不依赖服务参数）。
 - **重启设备**。
 
-保存参数后设备会自动重启并开始轮询服务端。
+保存屏幕类型或服务参数后设备会自动重启；服务参数完整时才会开始轮询服务端。
 
 ## 服务端接口约定
 
@@ -128,11 +132,13 @@ manifest 中与屏幕相关的字段必须与当前屏匹配，否则设备判�
 |---|---|---|---|---|---|---|
 | 彩色 | `bwry` | `edp-bwry-v1` | `dual-panel-left-right` | 1360 | 480 | 163200 |
 | 单色 | `bw` | `epd-bw-msb-v1` | `dual-panel-left-right` | 1360 | 480 | 81600 |
+| HINK 黑白红 | `bwr` | `epd-bwr-plane-v1` | `single` | 400 | 300 | 30000 |
 
 帧数据布局：
 
 - 彩色：2 bpp，每行 170 B（4 像素/字节），双面板。
 - 单色：1 bpp，行优先，每行 170 B = 85 B（左面板）+ 85 B（右面板），共 480 行。
+- HINK 黑白红：`[BW 15000][R 15000]`，各平面 1 bpp MSB-first（每行 50 B × 300 行）；BW：`0`=黑 / `1`=白；R：`1`=红（驱动写入时按厂商例程取反）。
 
 ## 目录结构
 
@@ -156,9 +162,11 @@ src/                         固件源码
     ctrl/
       uc8579.{c,h}           L1 彩色主控族（含刷新序列）
       jd79686.{c,h}          L1 单色主控族（含局刷与刷新序列）
+      ssd1619.{c,h}          L1 SSD1619 BWR 主控族（含刷新序列）
     drivers/
       qyeg1085ryu579.{c,h}   L3 彩色产品（CONFIG_EPD_PANEL_QYEG1085_COLOR）
       qyeg1085bnf86bf0.{c,h} L3 单色产品（CONFIG_EPD_PANEL_QYEG1085_MONO）
+      hink_e042a13_a0.{c,h}  L3 BWR 产品（CONFIG_EPD_PANEL_HINK_E042A13_A0）
 partitions.csv               分区表
 platformio.ini               PlatformIO 构建配置
 sdkconfig.defaults           ESP-IDF 默认配置
@@ -170,7 +178,7 @@ LICENSE                      MIT 许可证
 按差异选择落点（能复用则不复制）：
 
 1. **拓扑**：已有 `dual_lr` / `single` 则复用；否则新建 `epd/layout/<name>.{c,h}` 并加入 `CMakeLists.txt`。
-2. **主控族**：已有 `uc8579` / `jd79686` 则复用；否则新建 `epd/ctrl/<family>.{c,h}`，刷新序列写在该族内部。
+2. **主控族**：已有 `uc8579` / `jd79686` / `ssd1619` 则复用；否则新建 `epd/ctrl/<family>.{c,h}`，刷新序列写在该族内部。
 3. **产品**：新建 `src/epd/drivers/<name>.{c,h}`，填 cfg + `epd_panel_ops_t`（分辨率 / `color_mode` / `encoding` / `panel_layout`），`.c` 用 `#if defined(CONFIG_EPD_PANEL_<NAME>) && CONFIG_EPD_PANEL_<NAME>` 守卫。
 4. `src/epd/panel.c` 的 `s_registry` 增加 `#if` 条件项。
 5. `src/CMakeLists.txt` 的 `app_sources` 增加新产品（及新建的 layout/ctrl）源文件。
