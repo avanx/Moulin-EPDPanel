@@ -8,7 +8,7 @@
 #include "esp_wifi_types.h"
 
 #ifndef EPD_SETUP_AP_PASSWORD
-#define EPD_SETUP_AP_PASSWORD "123123"
+#define EPD_SETUP_AP_PASSWORD "123456789"
 #endif
 
 esp_err_t wifi_manager_init(void);
