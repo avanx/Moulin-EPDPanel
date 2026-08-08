@@ -23,8 +23,13 @@ static const char *TAG = "epd_panel";
 #else
 #define EPD_HAS_HINK042 0
 #endif
+#if defined(CONFIG_EPD_PANEL_HINK_E0213A04) && CONFIG_EPD_PANEL_HINK_E0213A04
+#define EPD_HAS_HINK213 1
+#else
+#define EPD_HAS_HINK213 0
+#endif
 
-#define EPD_PANEL_COUNT (EPD_HAS_COLOR + EPD_HAS_MONO + EPD_HAS_HINK042)
+#define EPD_PANEL_COUNT (EPD_HAS_COLOR + EPD_HAS_MONO + EPD_HAS_HINK042 + EPD_HAS_HINK213)
 
 #if EPD_PANEL_COUNT == 0
 #error "No EPD panel driver enabled. Enable at least one under EPD Panel Drivers in menuconfig."
@@ -39,6 +44,9 @@ extern const epd_panel_ops_t mono_panel;
 #if EPD_HAS_HINK042
 extern const epd_panel_ops_t hink_e042a13_a0_panel;
 #endif
+#if EPD_HAS_HINK213
+extern const epd_panel_ops_t hink_e0213a04_panel;
+#endif
 
 static const epd_panel_ops_t *const s_registry[] = {
 #if EPD_HAS_COLOR
@@ -49,6 +57,9 @@ static const epd_panel_ops_t *const s_registry[] = {
 #endif
 #if EPD_HAS_HINK042
     &hink_e042a13_a0_panel,
+#endif
+#if EPD_HAS_HINK213
+    &hink_e0213a04_panel,
 #endif
 };
 

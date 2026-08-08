@@ -29,6 +29,7 @@
 | `qyeg1085_color` | dual-left-right | 否 | `display_partial = NULL`，仅全刷 |
 | `qyeg1085_mono` | dual-left-right | 是 | `epd-bw-msb-v1`；宽为 8 倍数；跨缝由 `dual_lr` 拆分（`EPD_MASTER_ONLY_TEST` 时关闭） |
 | `hink_e042a13_a0` | single | 否 | `epd-bwr-plane-v1`；仅全刷 |
+| `hink_e0213a04` | single | 是 | `epd-bw-msb-v1`；宽为 8 倍数；可见区 122×250 |
 
 ### 路线图（TODO）
 
@@ -36,6 +37,7 @@
 - [x] 局刷能力矩阵与跨 IC region 映射（`dual_lr`）
 - [x] 单面板 layout API（`layout/single`，已由 HINK-E042A13-A0 接入）
 - [x] 支持 SSD1619 主控族（`ctrl/ssd1619`）
+- [x] 支持 IL3895 主控族（`ctrl/il3895`，HINK-E0213A04 / 微雪 2.13 V1 epd2in13）
 - [ ] 支持更多主控芯片（SSD16xx 其他型号、UC81xx、IL0xxx 等）
 - [ ] 接入其他更多的电子墨水屏幕
 
@@ -46,8 +48,9 @@
 | ✅ 已支持 | `QYEG1085RYU579` | UC8579cGAC ×2 | 1360×480 | 黑/白/红/黄（4 色, 2 bpp） | 左右双面板 | `CONFIG_EPD_PANEL_QYEG1085_COLOR` |
 | ✅ 已支持 | `QYEG1085BNF86BF0` | JD79686AB ×2 | 1360×480 | 黑/白（1 bpp） | 左右双面板 | `CONFIG_EPD_PANEL_QYEG1085_MONO` |
 | ✅ 已支持 | `HINK-E042A13-A0` | SSD1619 ×1 | 400×300 | 黑/白/红（BWR） | 单面板 | `CONFIG_EPD_PANEL_HINK_E042A13_A0` |
+| ✅ 已支持 | `HINK-E0213A04` | IL3895 ×1 | 128×250（可见 122×250） | 黑/白 | 单面板 | `CONFIG_EPD_PANEL_HINK_E0213A04` |
 
-> 双面板屏共用 L0 `epd_io` 与 L2 `dual_lr`（合计 1360×480）。`HINK-E042A13-A0` 使用 L2 `single` + L1 `ssd1619`（例程见 `reference/GDEH042Z96_Arduino.ino`）。新主控加 `ctrl/*`；新拓扑加 `layout/*`；产品文件保持薄粘合。
+> 双面板屏共用 L0 `epd_io` 与 L2 `dual_lr`（合计 1360×480）。`HINK-E042A13-A0` 使用 L2 `single` + L1 `ssd1619`（例程见 `reference/GDEH042Z96_Arduino.ino`）。`HINK-E0213A04` 使用 L2 `single` + L1 `il3895`（对齐 `reference/epd2in13`：刷新恒为 `0xC4`，双缓冲写显两次）。新主控加 `ctrl/*`；新拓扑加 `layout/*`；产品文件保持薄粘合。
 
 ## 硬件
 
@@ -73,6 +76,7 @@
 - 彩色 `QYEG1085RYU579`（默认）：`-DCONFIG_EPD_PANEL_QYEG1085_COLOR=1`
 - 单色 `QYEG1085BNF86BF0`：`-DCONFIG_EPD_PANEL_QYEG1085_MONO=1`
 - 黑白红 `HINK-E042A13-A0`：`-DCONFIG_EPD_PANEL_HINK_E042A13_A0=1`
+- 单色 `HINK-E0213A04`：`-DCONFIG_EPD_PANEL_HINK_E0213A04=1`
 
 默认配置可同时启用多屏，网页再选当前型号。只保留其一亦可。改完后：
 
@@ -133,12 +137,14 @@ manifest 中与屏幕相关的字段必须与当前屏匹配，否则设备判�
 | 彩色 | `bwry` | `edp-bwry-v1` | `dual-panel-left-right` | 1360 | 480 | 163200 |
 | 单色 | `bw` | `epd-bw-msb-v1` | `dual-panel-left-right` | 1360 | 480 | 81600 |
 | HINK 黑白红 | `bwr` | `epd-bwr-plane-v1` | `single` | 400 | 300 | 30000 |
+| HINK 2.13" 黑白 | `bw` | `epd-bw-msb-v1` | `single` | 128 | 250 | 4000 |
 
 帧数据布局：
 
 - 彩色：2 bpp，每行 170 B（4 像素/字节），双面板。
 - 单色：1 bpp，行优先，每行 170 B = 85 B（左面板）+ 85 B（右面板），共 480 行。
 - HINK 黑白红：`[BW 15000][R 15000]`，各平面 1 bpp MSB-first（每行 50 B × 300 行）；BW：`0`=黑 / `1`=白；R：`1`=红（驱动写入时按厂商例程取反）。
+- HINK 2.13" 黑白：1 bpp MSB-first，每行 16 B × 250 行 = 4000 B；`0`=黑 / `1`=白（可见宽 122，右侧 6 列对控制器无效）。
 
 ## 目录结构
 
@@ -163,10 +169,12 @@ src/                         固件源码
       uc8579.{c,h}           L1 彩色主控族（含刷新序列）
       jd79686.{c,h}          L1 单色主控族（含局刷与刷新序列）
       ssd1619.{c,h}          L1 SSD1619 BWR 主控族（含刷新序列）
+      il3895.{c,h}           L1 IL3895 BW 主控族（微雪 epd2in13 V1，含局刷）
     drivers/
       qyeg1085ryu579.{c,h}   L3 彩色产品（CONFIG_EPD_PANEL_QYEG1085_COLOR）
       qyeg1085bnf86bf0.{c,h} L3 单色产品（CONFIG_EPD_PANEL_QYEG1085_MONO）
       hink_e042a13_a0.{c,h}  L3 BWR 产品（CONFIG_EPD_PANEL_HINK_E042A13_A0）
+      hink_e0213a04.{c,h}    L3 BW 产品（CONFIG_EPD_PANEL_HINK_E0213A04）
 partitions.csv               分区表
 platformio.ini               PlatformIO 构建配置
 sdkconfig.defaults           ESP-IDF 默认配置
