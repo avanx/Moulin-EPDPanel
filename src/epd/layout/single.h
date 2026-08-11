@@ -11,7 +11,8 @@ extern "C" {
 /*
  * L2 Layout — single-panel topology (one controller, full logical frame).
  *
- * Used by HINK-E042A13-A0 (SSD1619 BWR) and HINK-E0213A04 (IL3895 BW).
+ * Used by HINK-E042A13-A0 (SSD1619 BWR), HINK-E0213A04 (IL3895 BW),
+ * and HINK-E0213A07-A1 (SSD1675A BW).
  */
 
 typedef struct {

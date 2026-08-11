@@ -38,6 +38,7 @@ extern "C" {
  *                                                       (*disabled if EPD_MASTER_ONLY_TEST)
  *   hink_e042a13_a0        single              no       BWR epd-bwr-plane-v1; full only
  *   hink_e0213a04          single              yes      BW epd-bw-msb-v1; width multiple of 8
+ *   hink_e0213a07          single              yes      BW epd-bw-msb-v1; SSD1675A; width ×8
  *
  * Cross-IC partial: layout/dual_lr splits at panel_w; idle no-op on the
  * unused IC so Master BUSY still tracks a broadcast 0x12.

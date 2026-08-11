@@ -18,10 +18,12 @@ set(app_sources
     epd/ctrl/jd79686.c
     epd/ctrl/ssd1619.c
     epd/ctrl/il3895.c
+    epd/ctrl/ssd1675a.c
     epd/drivers/qyeg1085ryu579.c
     epd/drivers/qyeg1085bnf86bf0.c
     epd/drivers/hink_e042a13_a0.c
     epd/drivers/hink_e0213a04.c
+    epd/drivers/hink_e0213a07.c
 )
 
 idf_component_register(

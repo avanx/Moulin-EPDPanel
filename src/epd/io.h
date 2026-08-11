@@ -66,7 +66,7 @@ void epd_delay_ms(uint32_t ms);
 /*
  * Wait until BUSY pin equals idle_level.
  * UC8579 / JD79686: high = idle (use epd_wait_busy / idle_level=1).
- * SSD1619 / IL3895: high = busy (use idle_level=0).
+ * SSD1619 / IL3895 / SSD1675A: high = busy (use idle_level=0).
  */
 esp_err_t epd_wait_busy_idle(int idle_level);
 esp_err_t epd_wait_busy(void); /* = epd_wait_busy_idle(1) */
