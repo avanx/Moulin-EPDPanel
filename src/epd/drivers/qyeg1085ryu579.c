@@ -49,6 +49,12 @@ static esp_err_t panel_fill_white(void)
     return uc8579_fill(&s_cfg, 0x55);
 }
 
+/* 2bpp: four EPD_COLOR_BLACK (0x00) pixels per byte. */
+static esp_err_t panel_fill_black(void)
+{
+    return uc8579_fill(&s_cfg, 0x00);
+}
+
 static esp_err_t panel_display_image(const uint8_t *image)
 {
     return uc8579_display_image(&s_cfg, image, color_byte_remap);
@@ -68,6 +74,7 @@ const epd_panel_ops_t color_panel = {
     .init = panel_init,
     .display_image = panel_display_image,
     .fill_white = panel_fill_white,
+    .fill_black = panel_fill_black,
     .display_partial = NULL,   /* UC8579 color: no partial refresh */
 };
 

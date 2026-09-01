@@ -38,6 +38,9 @@ esp_err_t ssd1675a_display_image(const ssd1675a_cfg_t *cfg, const uint8_t *image
 /* ClearFrameMemory(0xFF) + DisplayFrame, twice, then Sleep. */
 esp_err_t ssd1675a_fill_white(const ssd1675a_cfg_t *cfg);
 
+/* ClearFrameMemory(0x00) + DisplayFrame, twice, then Sleep. */
+esp_err_t ssd1675a_fill_black(const ssd1675a_cfg_t *cfg);
+
 /*
  * Partial: Init(lut_partial) + PowerOn, then for each region write old->0x26 /
  * new->0x24 and DisplayFrame once. Width multiple of 8.

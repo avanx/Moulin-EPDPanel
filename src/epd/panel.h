@@ -80,6 +80,11 @@ typedef struct {
     esp_err_t (*display_image)(const uint8_t *image);
     esp_err_t (*fill_white)(void);
     /*
+     * Full-screen black fill. Paired with fill_white by the ink-repair
+     * cycle (device/control) to drive every pixel through both extremes.
+     */
+    esp_err_t (*fill_black)(void);
+    /*
      * Optional partial refresh. Applies every region in order, writing each
      * region's old plane to the controller's previous-data buffer and its new
      * plane to the new-data buffer, then triggering a partial refresh of the

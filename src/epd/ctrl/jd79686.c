@@ -198,7 +198,8 @@ esp_err_t jd79686_display_image(const jd79686_cfg_t *cfg, const uint8_t *image)
     return jd79686_update_and_sleep();
 }
 
-esp_err_t jd79686_fill_white(const jd79686_cfg_t *cfg)
+/* Broadcast fill: old RAM (0x10) cleared, new RAM (0x13) = fill_byte. */
+static esp_err_t jd79686_fill(const jd79686_cfg_t *cfg, uint8_t fill_byte)
 {
     if (cfg == NULL) {
         return ESP_ERR_INVALID_ARG;
@@ -206,16 +207,26 @@ esp_err_t jd79686_fill_white(const jd79686_cfg_t *cfg)
 
     uint16_t ic_bytes = epd_dual_lr_ic_row_bytes(&cfg->layout);
     uint32_t full_bytes = (uint32_t)cfg->layout.height * ic_bytes * 2;
-    ESP_LOGI(TAG, "fill white");
+    ESP_LOGI(TAG, "fill data=0x%02X", fill_byte);
     epd_write_command(0x10);
     for (uint32_t i = 0; i < full_bytes; i++) {
         epd_write_data(0x00);
     }
     epd_write_command(0x13);
     for (uint32_t i = 0; i < full_bytes; i++) {
-        epd_write_data(0x00);
+        epd_write_data(fill_byte);
     }
     return jd79686_update_and_sleep();
+}
+
+esp_err_t jd79686_fill_white(const jd79686_cfg_t *cfg)
+{
+    return jd79686_fill(cfg, 0x00);
+}
+
+esp_err_t jd79686_fill_black(const jd79686_cfg_t *cfg)
+{
+    return jd79686_fill(cfg, 0xFF);
 }
 
 #if !EPD_MASTER_ONLY_TEST

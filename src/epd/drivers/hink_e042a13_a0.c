@@ -28,6 +28,11 @@ static esp_err_t panel_fill_white(void)
     return ssd1619_fill_white(&s_cfg);
 }
 
+static esp_err_t panel_fill_black(void)
+{
+    return ssd1619_fill_black(&s_cfg);
+}
+
 const epd_panel_ops_t hink_e042a13_a0_panel = {
     .type = "hink_e042a13_a0",
     .label = "HINK-E042A13-A0 · 黑白红 B/W/R · 400×300",
@@ -42,6 +47,7 @@ const epd_panel_ops_t hink_e042a13_a0_panel = {
     .init = panel_init,
     .display_image = panel_display_image,
     .fill_white = panel_fill_white,
+    .fill_black = panel_fill_black,
     .display_partial = NULL,   /* SSD1619 BWR OTP: full refresh only */
 };
 

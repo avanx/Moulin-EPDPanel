@@ -28,6 +28,11 @@ static esp_err_t panel_fill_white(void)
     return il3895_fill_white(&s_cfg);
 }
 
+static esp_err_t panel_fill_black(void)
+{
+    return il3895_fill_black(&s_cfg);
+}
+
 static esp_err_t panel_display_partial(const epd_region_t *regions, size_t count)
 {
     return il3895_display_partial(&s_cfg, regions, count);
@@ -47,6 +52,7 @@ const epd_panel_ops_t hink_e0213a04_panel = {
     .init = panel_init,
     .display_image = panel_display_image,
     .fill_white = panel_fill_white,
+    .fill_black = panel_fill_black,
     .display_partial = panel_display_partial,
 };
 

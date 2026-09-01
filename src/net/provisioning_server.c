@@ -111,7 +111,14 @@ static const char STATION_HTML[] =
 "<h2>操作</h2>"
 "<button type=button id=refresh>强制全屏刷新</button>"
 "<button type=button id=white class=danger>刷白并暂停更新</button>"
-"<button type=button id=restart class=secondary>重启设备</button><div id=msg></div></form></main><script>"
+"<button type=button id=restart class=secondary>重启设备</button>"
+"<h2>墨色沉积修复</h2>"
+"<p class=hint>全黑 5 秒与全白 5 秒交替刷新，用于消除长期残影与墨色沉积。"
+"修复期间自动更新暂停，完成后自动恢复并重新拉取画面。</p>"
+"<label>循环次数（0 表示持续循环，直到点击停止）</label>"
+"<input id=repair_cycles type=number min=0 max=100 step=1 value=5>"
+"<button type=button id=repair class=danger>启动修复模式</button>"
+"<button type=button id=repair_stop class=secondary>停止修复</button><div id=msg></div></form></main><script>"
 "const q=s=>document.querySelector(s),msg=(t,e=false)=>{q('#msg').textContent=t;q('#msg').className=e?'err':'ok'};"
 "let hasApiKey=false;"
 "async function load(){try{let c=await(await fetch('/api/device')).json();q('#server_url').value=c.server_url||'';"
@@ -142,6 +149,21 @@ static const char STATION_HTML[] =
 "let s=await(await fetch('/api/status',{cache:'no-store'})).json();if(s.control_state==='white'){msg('屏幕已刷白，自动更新已暂停，重启后恢复');return}"
 "if(s.control_state==='white_failed')throw Error('屏幕刷白失败，更新仍保持暂停，请重启恢复')}throw Error('等待刷白完成超时')}"
 "catch(x){msg(x.message,true)}finally{q('#white').disabled=false}};"
+"q('#repair').onclick=async()=>{let n=parseInt(q('#repair_cycles').value,10);"
+"if(!Number.isInteger(n)||n<0||n>100){msg('循环次数需为 0-100 的整数',true);return}"
+"if(!confirm('确认启动修复模式？屏幕将反复黑白交替刷新，期间自动更新暂停。'))return;"
+"q('#repair').disabled=true;msg('正在启动修复模式…');"
+"try{let r=await fetch('/api/actions/repair',{method:'POST',headers:{'Content-Type':'application/json'},"
+"body:JSON.stringify({cycles:n})});let j=await r.json();if(!r.ok)throw Error(j.error||'命令失败');"
+"while(true){await new Promise(x=>setTimeout(x,2000));"
+"let s=await(await fetch('/api/status',{cache:'no-store'})).json();"
+"if(s.control_state==='repairing'){msg('修复中…已完成 '+s.repair_cycle+(s.repair_cycles?' / '+s.repair_cycles:'')+' 轮');continue}"
+"if(s.control_state==='repair_failed')throw Error('修复失败，自动更新保持暂停，请重启设备');"
+"msg('修复完成，共 '+s.repair_cycle+' 轮，已恢复自动更新');return}}"
+"catch(x){msg(x.message,true)}finally{q('#repair').disabled=false}};"
+"q('#repair_stop').onclick=async()=>{try{let r=await fetch('/api/actions/repair/stop',{method:'POST'});"
+"let j=await r.json();if(!r.ok)throw Error(j.error||'命令失败');msg('已请求停止，将在当前一轮刷白后结束')}"
+"catch(x){msg(x.message,true)}};"
 "q('#restart').onclick=async()=>{if(!confirm('确认立即重启设备？'))return;msg('设备正在重启…');"
 "try{await fetch('/api/actions/restart',{method:'POST'})}catch(e){}};load();</script></body></html>";
 
@@ -613,6 +635,8 @@ static esp_err_t status_handler(httpd_req_t *request)
     cJSON_AddStringToObject(root, "ap_ssid", ap_ssid);
     cJSON_AddStringToObject(root, "control_state", device_control_state_name());
     cJSON_AddBoolToObject(root, "updates_paused", device_control_updates_paused());
+    cJSON_AddNumberToObject(root, "repair_cycle", device_control_repair_cycles_done());
+    cJSON_AddNumberToObject(root, "repair_cycles", device_control_repair_cycles_total());
     esp_err_t err = send_json(request, root, 200);
     cJSON_Delete(root);
     return err;
@@ -635,6 +659,81 @@ static esp_err_t white_action_handler(httpd_req_t *request)
                                 device_control_updates_paused()
                                     ? "屏幕更新已暂停，请重启设备后重试"
                                     : "无法启动刷白任务");
+        status = 400;
+    }
+    esp_err_t err = send_json(request, root, status);
+    cJSON_Delete(root);
+    return err;
+}
+
+static esp_err_t repair_action_handler(httpd_req_t *request)
+{
+    if (wifi_manager_is_provisioning()) {
+        return httpd_resp_send_err(request, HTTPD_403_FORBIDDEN,
+                                   "Available in Station mode only");
+    }
+
+    /* An empty body means "use the default cycle count". */
+    uint32_t cycles = DEVICE_CONTROL_REPAIR_CYCLES_DEFAULT;
+    bool valid = true;
+    cJSON *root = receive_json(request);
+    if (root != NULL) {
+        cJSON *item = cJSON_GetObjectItemCaseSensitive(root, "cycles");
+        if (item != NULL) {
+            if (cJSON_IsNumber(item) && item->valuedouble >= 0 &&
+                item->valuedouble <= DEVICE_CONTROL_REPAIR_CYCLES_MAX &&
+                item->valuedouble == (double)(uint32_t)item->valuedouble) {
+                cycles = (uint32_t)item->valuedouble;
+            } else {
+                valid = false;
+            }
+        }
+    }
+    cJSON_Delete(root);
+
+    esp_err_t command_err = valid ? device_control_request_repair(cycles)
+                                  : ESP_ERR_INVALID_ARG;
+    cJSON *response = cJSON_CreateObject();
+    int status;
+    if (command_err == ESP_OK) {
+        cJSON_AddBoolToObject(response, "accepted", true);
+        cJSON_AddNumberToObject(response, "cycles", cycles);
+        status = 202;
+        EPD_LOGI(TAG, "ink repair requested from Station page (%u cycles)",
+                 (unsigned)cycles);
+    } else {
+        const char *reason;
+        if (command_err == ESP_ERR_INVALID_ARG) {
+            reason = "循环次数无效";
+        } else if (command_err == ESP_ERR_NOT_SUPPORTED) {
+            reason = "当前屏幕不支持修复模式";
+        } else if (device_control_updates_paused()) {
+            reason = "屏幕更新已暂停或修复正在进行，请稍候或重启设备后重试";
+        } else {
+            reason = "无法启动修复模式";
+        }
+        cJSON_AddStringToObject(response, "error", reason);
+        status = 400;
+    }
+    esp_err_t err = send_json(request, response, status);
+    cJSON_Delete(response);
+    return err;
+}
+
+static esp_err_t repair_stop_action_handler(httpd_req_t *request)
+{
+    if (wifi_manager_is_provisioning()) {
+        return httpd_resp_send_err(request, HTTPD_403_FORBIDDEN,
+                                   "Available in Station mode only");
+    }
+    esp_err_t command_err = device_control_stop_repair();
+    cJSON *root = cJSON_CreateObject();
+    int status;
+    if (command_err == ESP_OK) {
+        cJSON_AddBoolToObject(root, "accepted", true);
+        status = 202;
+    } else {
+        cJSON_AddStringToObject(root, "error", "当前没有正在运行的修复任务");
         status = 400;
     }
     esp_err_t err = send_json(request, root, status);
@@ -713,6 +812,9 @@ esp_err_t provisioning_server_start(void)
         {.uri = "/api/actions/refresh", .method = HTTP_POST,
          .handler = refresh_action_handler},
         {.uri = "/api/actions/white", .method = HTTP_POST, .handler = white_action_handler},
+        {.uri = "/api/actions/repair", .method = HTTP_POST, .handler = repair_action_handler},
+        {.uri = "/api/actions/repair/stop", .method = HTTP_POST,
+         .handler = repair_stop_action_handler},
         {.uri = "/api/actions/restart", .method = HTTP_POST, .handler = restart_action_handler},
         /* Captive-portal probes (Android/iOS/Windows) and any other GET path. */
         {.uri = "/*", .method = HTTP_GET, .handler = captive_redirect_handler},

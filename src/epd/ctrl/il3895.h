@@ -37,6 +37,9 @@ esp_err_t il3895_display_image(const il3895_cfg_t *cfg, const uint8_t *image);
 /* ClearFrameMemory(0xFF) + DisplayFrame, twice, then Sleep. */
 esp_err_t il3895_fill_white(const il3895_cfg_t *cfg);
 
+/* ClearFrameMemory(0x00) + DisplayFrame, twice, then Sleep. */
+esp_err_t il3895_fill_black(const il3895_cfg_t *cfg);
+
 /*
  * Partial: Init(lut_partial), then for each region prime old / apply new
  * with write+DisplayFrame twice each. Width multiple of 8.

@@ -30,6 +30,7 @@ typedef struct {
 esp_err_t jd79686_init(const jd79686_cfg_t *cfg);
 esp_err_t jd79686_display_image(const jd79686_cfg_t *cfg, const uint8_t *image);
 esp_err_t jd79686_fill_white(const jd79686_cfg_t *cfg);
+esp_err_t jd79686_fill_black(const jd79686_cfg_t *cfg);
 
 #if !EPD_MASTER_ONLY_TEST
 esp_err_t jd79686_display_partial(const jd79686_cfg_t *cfg,

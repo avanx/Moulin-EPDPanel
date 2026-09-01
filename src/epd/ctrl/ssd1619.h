@@ -37,6 +37,9 @@ esp_err_t ssd1619_display_image(const ssd1619_cfg_t *cfg, const uint8_t *image);
 /* Full white: BW=0xFF, R=0x00 (controller-native), then refresh + sleep. */
 esp_err_t ssd1619_fill_white(const ssd1619_cfg_t *cfg);
 
+/* Full black: BW=0x00, R=0x00, then refresh + sleep. */
+esp_err_t ssd1619_fill_black(const ssd1619_cfg_t *cfg);
+
 #ifdef __cplusplus
 }
 #endif

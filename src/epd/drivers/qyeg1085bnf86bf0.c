@@ -30,6 +30,11 @@ static esp_err_t panel_fill_white(void)
     return jd79686_fill_white(&s_cfg);
 }
 
+static esp_err_t panel_fill_black(void)
+{
+    return jd79686_fill_black(&s_cfg);
+}
+
 #if !EPD_MASTER_ONLY_TEST
 static esp_err_t panel_display_partial(const epd_region_t *regions, size_t count)
 {
@@ -51,6 +56,7 @@ const epd_panel_ops_t mono_panel = {
     .init = panel_init,
     .display_image = panel_display_image,
     .fill_white = panel_fill_white,
+    .fill_black = panel_fill_black,
 #if EPD_MASTER_ONLY_TEST
     .display_partial = NULL,
 #else

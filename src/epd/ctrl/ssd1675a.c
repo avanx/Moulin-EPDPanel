@@ -303,6 +303,19 @@ esp_err_t ssd1675a_fill_white(const ssd1675a_cfg_t *cfg)
     return err;
 }
 
+esp_err_t ssd1675a_fill_black(const ssd1675a_cfg_t *cfg)
+{
+    if (cfg == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    esp_err_t err = ssd1675a_commit_twice(cfg, NULL, 0x00);
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "fill black complete");
+    }
+    return err;
+}
+
 esp_err_t ssd1675a_display_partial(const ssd1675a_cfg_t *cfg,
                                    const epd_region_t *regions,
                                    size_t count)

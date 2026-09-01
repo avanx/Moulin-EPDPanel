@@ -156,7 +156,8 @@ esp_err_t ssd1619_display_image(const ssd1619_cfg_t *cfg, const uint8_t *image)
     return ssd1619_update_and_sleep();
 }
 
-esp_err_t ssd1619_fill_white(const ssd1619_cfg_t *cfg)
+/* Uniform fill: bw_byte to RAM 0x24, red plane left blank (0x00 = no red). */
+static esp_err_t ssd1619_fill(const ssd1619_cfg_t *cfg, uint8_t bw_byte)
 {
     if (cfg == NULL) {
         return ESP_ERR_INVALID_ARG;
@@ -166,7 +167,7 @@ esp_err_t ssd1619_fill_white(const ssd1619_cfg_t *cfg)
 
     ssd1619_cmd(0x24);
     for (uint32_t i = 0; i < plane; i++) {
-        ssd1619_data(0xFF);
+        ssd1619_data(bw_byte);
     }
 
     ssd1619_cmd(0x26);
@@ -175,4 +176,14 @@ esp_err_t ssd1619_fill_white(const ssd1619_cfg_t *cfg)
     }
 
     return ssd1619_update_and_sleep();
+}
+
+esp_err_t ssd1619_fill_white(const ssd1619_cfg_t *cfg)
+{
+    return ssd1619_fill(cfg, 0xFF);
+}
+
+esp_err_t ssd1619_fill_black(const ssd1619_cfg_t *cfg)
+{
+    return ssd1619_fill(cfg, 0x00);
 }
