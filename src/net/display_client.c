@@ -11,10 +11,12 @@
 #include "esp_crt_bundle.h"
 #include "esp_heap_caps.h"
 #include "esp_http_client.h"
+#include "esp_timer.h"
 #include "mbedtls/sha256.h"
 
 #define MANIFEST_BODY_MAX 8192
 #define HTTP_TIMEOUT_MS   20000
+#define MANIFEST_TIMEOUT_MS 60000
 #define RETRY_BASE_SECONDS 15U
 #define RETRY_MAX_SECONDS  960U
 /* Mono EPD ghosting control: after this many partials, force one full refresh. */
@@ -24,6 +26,9 @@ static const char *TAG = "display_api";
 static uint32_t s_failures;
 static bool s_force_full_manifest = true;
 static uint8_t s_partial_since_full;
+/* Milliseconds from the manifest response until the panel goes idle. */
+static uint32_t s_last_full_latency_ms;
+static uint32_t s_last_partial_latency_ms;
 
 typedef struct {
     char *body;
@@ -83,13 +88,14 @@ static esp_err_t http_event(esp_http_client_event_t *event)
     return ESP_OK;
 }
 
-static esp_http_client_handle_t create_client(const char *url, http_context_t *context)
+static esp_http_client_handle_t create_client(const char *url, http_context_t *context,
+                                                int timeout_ms)
 {
     esp_http_client_config_t options = {
         .url = url,
         .event_handler = http_event,
         .user_data = context,
-        .timeout_ms = HTTP_TIMEOUT_MS,
+        .timeout_ms = timeout_ms,
         .buffer_size = 2048,
         .buffer_size_tx = 1024,
         .crt_bundle_attach = esp_crt_bundle_attach,
@@ -254,18 +260,45 @@ static bool parse_manifest(const char *body, manifest_t *manifest)
     return valid;
 }
 
+/* Full refresh when the caller forces one, the partial budget is spent, or
+ * this panel cannot update a window. Matches the decision in display_client_poll. */
+static bool expect_full_refresh(bool force_full)
+{
+    const epd_panel_ops_t *panel = epd_panel_current();
+    return force_full || s_force_full_manifest ||
+           panel->display_partial == NULL ||
+           s_partial_since_full >= PARTIAL_BEFORE_FULL;
+}
+
+static uint32_t latency_for_next_refresh(bool force_full)
+{
+    return expect_full_refresh(force_full) ? s_last_full_latency_ms
+                                           : s_last_partial_latency_ms;
+}
+
 static int fetch_manifest(const device_config_t *config, manifest_t *manifest,
-                          bool include_snapshot)
+                          bool include_snapshot, uint32_t display_latency_ms)
 {
     char url[512];
     int written;
-    if (include_snapshot && config->snapshot_id[0] != '\0') {
+    const char *base = config->server_url;
+    const char *screen = config->screen_id;
+    bool with_snapshot = include_snapshot && config->snapshot_id[0] != '\0';
+    if (with_snapshot && display_latency_ms > 0) {
+        written = snprintf(url, sizeof(url),
+                           "%s/api/v1/device/screens/%s/manifest?base_snapshot_id=%s&display_latency_ms=%u",
+                           base, screen, config->snapshot_id, (unsigned)display_latency_ms);
+    } else if (with_snapshot) {
         written = snprintf(url, sizeof(url),
                            "%s/api/v1/device/screens/%s/manifest?base_snapshot_id=%s",
-                           config->server_url, config->screen_id, config->snapshot_id);
+                           base, screen, config->snapshot_id);
+    } else if (display_latency_ms > 0) {
+        written = snprintf(url, sizeof(url),
+                           "%s/api/v1/device/screens/%s/manifest?display_latency_ms=%u",
+                           base, screen, (unsigned)display_latency_ms);
     } else {
         written = snprintf(url, sizeof(url), "%s/api/v1/device/screens/%s/manifest",
-                           config->server_url, config->screen_id);
+                           base, screen);
     }
     if (written < 0 || (size_t)written >= sizeof(url)) {
         return -1;
@@ -279,7 +312,7 @@ static int fetch_manifest(const device_config_t *config, manifest_t *manifest,
         .body = body,
         .capacity = MANIFEST_BODY_MAX,
     };
-    esp_http_client_handle_t client = create_client(url, &context);
+    esp_http_client_handle_t client = create_client(url, &context, MANIFEST_TIMEOUT_MS);
     if (client == NULL) {
         free(body);
         return -1;
@@ -325,7 +358,7 @@ static bool download_verified(const device_config_t *config, const char *url,
     }
 
     http_context_t context = {0};
-    esp_http_client_handle_t client = create_client(url, &context);
+    esp_http_client_handle_t client = create_client(url, &context, HTTP_TIMEOUT_MS);
     if (client == NULL) {
         free(buf);
         return false;
@@ -473,7 +506,10 @@ uint32_t display_client_poll(device_config_t *config, bool force_full)
         EPD_LOGI(TAG, "full-screen refresh requested");
     }
     manifest_t manifest = {0};
-    int status = fetch_manifest(config, &manifest, !s_force_full_manifest);
+    uint32_t reported_latency_ms = latency_for_next_refresh(force_full);
+    int status = fetch_manifest(config, &manifest, !s_force_full_manifest,
+                                reported_latency_ms);
+    int64_t display_started_us = status == 200 ? esp_timer_get_time() : 0;
     if (status == 304) {
         s_failures = 0;
         EPD_LOGD(TAG, "display unchanged");
@@ -522,12 +558,23 @@ uint32_t display_client_poll(device_config_t *config, bool force_full)
     if (!applied) {
         return retry_interval();
     }
+    uint32_t display_latency_ms = 0;
+    if (display_started_us > 0) {
+        int64_t elapsed_us = esp_timer_get_time() - display_started_us;
+        if (elapsed_us > 0) {
+            display_latency_ms = (uint32_t)(elapsed_us / 1000);
+        }
+    }
     if (used_partial) {
+        s_last_partial_latency_ms = display_latency_ms;
         s_partial_since_full++;
-        EPD_LOGI(TAG, "partial streak %u/%u",
-                 (unsigned)s_partial_since_full, (unsigned)PARTIAL_BEFORE_FULL);
+        EPD_LOGI(TAG, "partial streak %u/%u, display latency %ums",
+                 (unsigned)s_partial_since_full, (unsigned)PARTIAL_BEFORE_FULL,
+                 (unsigned)display_latency_ms);
     } else {
+        s_last_full_latency_ms = display_latency_ms;
         s_partial_since_full = 0;
+        EPD_LOGI(TAG, "full refresh display latency %ums", (unsigned)display_latency_ms);
     }
     if (device_config_save_manifest_state(manifest.snapshot_id,
                                           manifest.refresh_seconds) != ESP_OK) {

@@ -5,6 +5,7 @@
 #include "net/provisioning_server.h"
 #include "net/wifi_manager.h"
 #include "util/debug_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -29,7 +30,15 @@ static void polling_task(void *argument)
         }
 
         disconnected_seconds = 0;
+        int64_t poll_started_us = esp_timer_get_time();
         uint32_t wait_seconds = device_control_poll(&s_config);
+        int64_t elapsed_us = esp_timer_get_time() - poll_started_us;
+        uint32_t elapsed_seconds = elapsed_us > 0 ? (uint32_t)(elapsed_us / 1000000) : 0;
+        if (elapsed_seconds >= wait_seconds) {
+            wait_seconds = 0;
+        } else {
+            wait_seconds -= elapsed_seconds;
+        }
         EPD_LOGD(TAG, "next poll in %u seconds", (unsigned)wait_seconds);
         while (wait_seconds-- > 0) {
             vTaskDelay(pdMS_TO_TICKS(1000));
