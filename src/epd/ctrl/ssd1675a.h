@@ -19,7 +19,8 @@ extern "C" {
  * 70-byte LUT; PowerOn (0xC0) after init; DisplayFrame 0xC4 (no 0xFF terminate);
  * Sleep = PowerOff (0xC3) + deep sleep 0x10/0x01.
  *
- * Frame: epd-bw-msb-v1, 1bpp MSB-first, 0=black / 1=white (0xFF = white).
+ * Frame: epd-bw-msb-v1, 1bpp MSB-first, 1=black / 0=white; the driver inverts
+ * each byte when writing RAM (RAM 0=black, fill 0xFF = white).
  * Logical RAM 128×250; visible 122×250.
  *
  * Dual buffer: write + DisplayFrame twice (MSP430 main.cpp / GxEPD2).

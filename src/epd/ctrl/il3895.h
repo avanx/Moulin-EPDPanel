@@ -21,7 +21,8 @@ extern "C" {
  * DisplayFrame always uses 0xC4. After each refresh the next WRITE_RAM goes
  * to the other ping-pong buffer, so a full image is written+refreshed twice.
  *
- * Frame: epd-bw-msb-v1, 1bpp MSB-first, 0=black / 1=white (0xFF = white).
+ * Frame: epd-bw-msb-v1, 1bpp MSB-first, 1=black / 0=white; the driver inverts
+ * each byte when writing RAM (RAM 0=black, fill 0xFF = white).
  * Logical RAM 128×250; visible 122×250.
  */
 

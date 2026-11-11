@@ -160,7 +160,7 @@ static esp_err_t il3895_write_full(const il3895_cfg_t *cfg,
         if (image != NULL) {
             const uint8_t *line = image + (uint32_t)y * row_bytes;
             for (uint16_t x = 0; x < row_bytes; x++) {
-                il3895_data(line[x]);
+                il3895_data((uint8_t)~line[x]);
             }
         } else {
             for (uint16_t x = 0; x < row_bytes; x++) {
@@ -192,7 +192,7 @@ static esp_err_t il3895_write_window(uint16_t x, uint16_t y,
         il3895_cmd(0x24);
         const uint8_t *line = plane + (uint32_t)row * stride;
         for (uint16_t bx = 0; bx < bytes_per_row; bx++) {
-            il3895_data(line[bx]);
+            il3895_data((uint8_t)~line[bx]);
         }
     }
     return ESP_OK;

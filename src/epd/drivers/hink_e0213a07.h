@@ -13,7 +13,8 @@ extern "C" {
  * Compatible with GDEH0213B72 timing; not the IL3895 A04 / Waveshare V1 panel.
  * Visible area is 122×250; frame uses 128-wide controller RAM.
  *
- * Frame: epd-bw-msb-v1, 1bpp MSB-first, 0=black / 1=white.
+ * Frame: epd-bw-msb-v1, 1bpp MSB-first, 1=black / 0=white; the driver inverts
+ * each byte when writing RAM (RAM 0=black).
  * Partial refresh: supported (display_partial).
  */
 

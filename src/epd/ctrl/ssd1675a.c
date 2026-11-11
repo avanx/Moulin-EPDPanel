@@ -206,7 +206,7 @@ static esp_err_t ssd1675a_write_full(const ssd1675a_cfg_t *cfg,
         if (image != NULL) {
             const uint8_t *line = image + (uint32_t)y * row_bytes;
             for (uint16_t x = 0; x < row_bytes; x++) {
-                ssd1675a_data(line[x]);
+                ssd1675a_data((uint8_t)~line[x]);
             }
         } else {
             for (uint16_t x = 0; x < row_bytes; x++) {
@@ -234,7 +234,7 @@ static esp_err_t ssd1675a_write_window(uint16_t x, uint16_t y,
         ssd1675a_cmd(ram_cmd);
         const uint8_t *line = plane + (uint32_t)row * stride;
         for (uint16_t bx = 0; bx < bytes_per_row; bx++) {
-            ssd1675a_data(line[bx]);
+            ssd1675a_data((uint8_t)~line[bx]);
         }
     }
     return ESP_OK;
