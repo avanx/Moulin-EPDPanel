@@ -18,8 +18,8 @@ extern "C" {
  * BUSY polarity is active-high (idle = 0), unlike UC8579/JD79686.
  *
  * Frame packing: epd-bwr-plane-v1 — [BW plane][R plane], each
- * (width/8)*height bytes, 1bpp MSB-first. R plane is inverted on write
- * (vendor Image2LCD / GDEH042Z96 demo convention).
+ * (width/8)*height bytes, 1bpp MSB-first. BW plane 0=black / 1=white,
+ * R plane 1=red / 0=no red; both match controller RAM and are written as-is.
  */
 
 typedef struct {
@@ -30,7 +30,7 @@ esp_err_t ssd1619_init(const ssd1619_cfg_t *cfg);
 
 /*
  * Write concatenated [BW][R] planes then full refresh + deep sleep.
- * R bytes are bitwise-inverted before RAM write (matching vendor demo).
+ * Both planes are written to RAM unchanged (no inversion).
  */
 esp_err_t ssd1619_display_image(const ssd1619_cfg_t *cfg, const uint8_t *image);
 

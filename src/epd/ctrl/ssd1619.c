@@ -94,8 +94,11 @@ esp_err_t ssd1619_init(const ssd1619_cfg_t *cfg)
     ssd1619_data((uint8_t)(mux >> 8));
     ssd1619_data(0x00);
 
-    ssd1619_cmd(0x11); /* Data entry mode */
-    ssd1619_data(0x01);
+    /* Data entry mode: X increment, Y increment. Frame row 0 (top) goes to
+     * RAM Y=0. The vendor demo used 0x01 (Y decrement from mux), which
+     * mirrors epd-bwr-plane-v1 frames top-to-bottom. */
+    ssd1619_cmd(0x11);
+    ssd1619_data(0x03);
 
     /* RAM X: 0 .. (width/8 - 1) */
     uint8_t x_end = (uint8_t)(cfg->layout.width / 8 - 1);
@@ -103,12 +106,12 @@ esp_err_t ssd1619_init(const ssd1619_cfg_t *cfg)
     ssd1619_data(0x00);
     ssd1619_data(x_end);
 
-    /* RAM Y: mux .. 0 (matches vendor: start 0x012B, end 0x0000) */
+    /* RAM Y: 0 .. mux */
     ssd1619_cmd(0x45);
+    ssd1619_data(0x00);
+    ssd1619_data(0x00);
     ssd1619_data((uint8_t)(mux & 0xFF));
     ssd1619_data((uint8_t)(mux >> 8));
-    ssd1619_data(0x00);
-    ssd1619_data(0x00);
 
     ssd1619_cmd(0x3C); /* Border */
     ssd1619_data(0x01); /* HiZ */
@@ -126,8 +129,8 @@ esp_err_t ssd1619_init(const ssd1619_cfg_t *cfg)
     ssd1619_cmd(0x4E);
     ssd1619_data(0x00);
     ssd1619_cmd(0x4F);
-    ssd1619_data((uint8_t)(mux & 0xFF));
-    ssd1619_data((uint8_t)(mux >> 8));
+    ssd1619_data(0x00);
+    ssd1619_data(0x00);
 
     ESP_LOGI(TAG, "init done");
     return ESP_OK;
@@ -148,9 +151,9 @@ esp_err_t ssd1619_display_image(const ssd1619_cfg_t *cfg, const uint8_t *image)
         ssd1619_data(bw[i]);
     }
 
-    ssd1619_cmd(0x26); /* Red RAM (vendor demo inverts Image2LCD red plane) */
+    ssd1619_cmd(0x26); /* Red RAM: 1=red, 0=no red (same as epd-bwr-plane-v1) */
     for (uint32_t i = 0; i < plane; i++) {
-        ssd1619_data((uint8_t)~red[i]);
+        ssd1619_data(red[i]);
     }
 
     return ssd1619_update_and_sleep();
